@@ -1,0 +1,54 @@
+name: Deploy Craftivo to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Website
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/craftivo_key
+          chmod 600 ~/.ssh/craftivo_key
+
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Validate website
+        shell: bash
+        run: |
+          test -f index.html
+          echo "index.html found"
+          echo "Website validation successful"
+
+      - name: Deploy to EC2
+        shell: bash
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='.github' \
+            -czf - . | \
+          ssh \
+            -i ~/.ssh/craftivo_key \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            'sudo rm -rf /tmp/craftivo-deploy && \
+             sudo mkdir -p /tmp/craftivo-deploy && \
+             sudo tar -xzf - -C /tmp/craftivo-deploy && \
+             sudo rm -rf /var/www/html/* && \
+             sudo cp -a /tmp/craftivo-deploy/. /var/www/html/ && \
+             sudo systemctl reload apache2'
+
+      - name: Deployment successful
+        run: echo "Craftivo deployed successfully!"
